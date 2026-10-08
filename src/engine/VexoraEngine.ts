@@ -1,95 +1,156 @@
 import * as THREE from 'three';
 
+interface EngineConfig {
+  worldSize: number;
+  maxRenderDistance: number;
+  shadowQuality: number;
+}
+
 export class VexoraEngine {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  private config: EngineConfig;
 
-  constructor() {
+  constructor(config: Partial<EngineConfig> = {}) {
+    this.config = {
+      worldSize: 200,
+      maxRenderDistance: 150,
+      shadowQuality: 1024,
+      ...config,
+    };
+
+    // Initialize scene with sky color and fog
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x8ecae6);
-    this.scene.fog = new THREE.Fog(0x8ecae6, 30, 150);
+    this.scene.background = new THREE.Color(0x87ceeb); // Sky blue
+    this.scene.fog = new THREE.Fog(
+      0x87ceeb,
+      50,
+      this.config.maxRenderDistance
+    );
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(0, 2, 8);
+    // Setup camera
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    this.camera.position.set(0, 3, 10);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Setup renderer
+    this.renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowShadowMap;
 
+    // Attach to DOM
     const root = document.getElementById('canvas-root');
-    if (root) {
-      root.appendChild(this.renderer.domElement);
-    }
+    root?.appendChild(this.renderer.domElement);
 
-    this.setupLights();
+    // Setup world
+    this.setupLighting();
     this.setupGround();
-    this.createBlocks();
+    this.spawnBlocksAroundOrigin();
 
-    window.addEventListener('resize', () => this.onResize());
+    // Handle window resizing
+    window.addEventListener('resize', () => this.handleResize());
   }
 
-  private setupLights() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-    this.scene.add(ambient);
+  private setupLighting() {
+    // Ambient light for overall brightness
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(ambientLight);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(20, 30, 15);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    this.scene.add(sun);
+    // Directional light (sun) for shadows and depth
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    sunLight.position.set(50, 80, 30);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = this.config.shadowQuality;
+    sunLight.shadow.mapSize.height = this.config.shadowQuality;
+    sunLight.shadow.camera.far = 200;
+    sunLight.shadow.camera.left = -100;
+    sunLight.shadow.camera.right = 100;
+    sunLight.shadow.camera.top = 100;
+    sunLight.shadow.camera.bottom = -100;
+
+    this.scene.add(sunLight);
   }
 
   private setupGround() {
+    const groundSize = this.config.worldSize;
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: 0x2a9d8f })
+      new THREE.PlaneGeometry(groundSize, groundSize),
+      new THREE.MeshStandardMaterial({ 
+        color: 0x2d5a3d,
+        metalness: 0.1,
+        roughness: 0.8,
+      })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
   }
 
-  private createBlocks() {
-    const colors = [0xff6b6b, 0x4ecdc4, 0xf7b267, 0x8ecae6, 0xf4d35e];
+  private spawnBlocksAroundOrigin() {
+    const blockColors = [
+      0xff6b6b, // Red
+      0x4ecdc4, // Teal
+      0xffa500, // Orange
+      0x6c5ce7, // Purple
+      0xfdcb6e, // Yellow
+    ];
 
-    for (let i = 0; i < 8; i += 1) {
+    const blockCount = 12;
+    const spawnRadius = 25;
+
+    for (let i = 0; i < blockCount; i++) {
+      const angle = (i / blockCount) * Math.PI * 2;
+      const x = Math.cos(angle) * spawnRadius;
+      const z = Math.sin(angle) * spawnRadius;
+
       const block = new THREE.Mesh(
-        new THREE.BoxGeometry(3, 3, 3),
-        new THREE.MeshStandardMaterial({ color: colors[i % colors.length] })
+        new THREE.BoxGeometry(2, 2, 2),
+        new THREE.MeshStandardMaterial({
+          color: blockColors[i % blockColors.length],
+          metalness: 0.3,
+          roughness: 0.5,
+        })
       );
 
-      block.position.set(
-        Math.cos((i / 8) * Math.PI * 2) * 18,
-        1.5,
-        Math.sin((i / 8) * Math.PI * 2) * 18
-      );
+      block.position.set(x, 1, z);
       block.castShadow = true;
       block.receiveShadow = true;
       this.scene.add(block);
     }
   }
 
-  public getScene() {
+  public getScene(): THREE.Scene {
     return this.scene;
   }
 
-  public getCamera() {
+  public getCamera(): THREE.PerspectiveCamera {
     return this.camera;
   }
 
-  public update(_delta: number) {
-    // engine-wide update hook
+  public update(_deltaTime: number): void {
+    // Game logic updates go here
   }
 
-  public render() {
+  public render(): void {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+  private handleResize(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(width, height);
   }
 }
